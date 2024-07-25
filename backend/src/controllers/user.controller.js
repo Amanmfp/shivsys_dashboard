@@ -1,11 +1,11 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js"
 import { User } from "../models/user.model.js"
+import { CompanyEmployee } from "../models/companyEmployee.model.js";
 import { uploadOnCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
-
 
 const generateAccessAndRefereshTokens = async (userId) => {
     try {
@@ -24,39 +24,96 @@ const generateAccessAndRefereshTokens = async (userId) => {
     }
 }
 
+// const registerUser = asyncHandler(async (req, res) => {
+
+//     const { fullName, email, username, password } = req.body
+//     //console.log("email: ", email);
+
+//     // checking if any field is empty
+//     if (
+//         [fullName, email, username, password].some((field) => field?.trim() === "")
+//     ) {
+//         throw new ApiError(400, "All fields are required")
+//     }
+
+//     const existedUser = await User.findOne({
+//         $or: [{ username }, { email }]
+//     })
+
+//     if (existedUser) {
+//         throw new ApiError(409, "User with email or username already exists")
+//     }
+//     //console.log(req.files);
+
+//     const avatarLocalPath = req.files?.avatar[0]?.path;
+
+//     if (!avatarLocalPath) {
+//         throw new ApiError(400, "Avatar file is required")
+//     }
+
+//     const avatar = await uploadOnCloudinary(avatarLocalPath)
+
+//     if (!avatar) {
+//         throw new ApiError(400, "Avatar file is required")
+//     }
+
+
+//     const user = await User.create({
+//         fullName,
+//         avatar: avatar.url,
+//         email,
+//         password,
+//         username: username.toLowerCase()
+//     })
+
+//     const createdUser = await User.findById(user._id).select(
+//         "-password -refreshToken"
+//     )
+
+//     if (!createdUser) {
+//         throw new ApiError(500, "Something went wrong while registering the user")
+//     }
+
+//     return res.status(201).json(
+//         new ApiResponse(200, createdUser, "User registered Successfully")
+//     )
+
+// })
+
 const registerUser = asyncHandler(async (req, res) => {
+    const { fullName, email, username, password } = req.body;
 
-    const { fullName, email, username, password } = req.body
-    //console.log("email: ", email);
-
-    // checking if any field is empty
-    if (
-        [fullName, email, username, password].some((field) => field?.trim() === "")
-    ) {
-        throw new ApiError(400, "All fields are required")
+    // Checking if any field is empty
+    if ([fullName, email, username, password].some((field) => field?.trim() === "")) {
+        throw new ApiError(400, "All fields are required");
     }
 
+    // Verify if the employee exists in the CompanyEmployee database
+    const employeeVerified = await CompanyEmployee.findOne({ email });
+    if (!employeeVerified) {
+        throw new ApiError(404, "Employee not found in company records");
+    }
+
+    // Check if the user already exists
     const existedUser = await User.findOne({
         $or: [{ username }, { email }]
-    })
+    });
 
     if (existedUser) {
-        throw new ApiError(409, "User with email or username already exists")
+        throw new ApiError(409, "User with email or username already exists");
     }
-    //console.log(req.files);
 
     // const avatarLocalPath = req.files?.avatar[0]?.path;
 
     // if (!avatarLocalPath) {
-    //     throw new ApiError(400, "Avatar file is required")
+    //     throw new ApiError(400, "Avatar file is required");
     // }
 
-    // const avatar = await uploadOnCloudinary(avatarLocalPath)
+    // const avatar = await uploadOnCloudinary(avatarLocalPath);
 
     // if (!avatar) {
-    //     throw new ApiError(400, "Avatar file is required")
+    //     throw new ApiError(400, "Avatar file upload failed");
     // }
-
 
     const user = await User.create({
         fullName,
@@ -64,21 +121,19 @@ const registerUser = asyncHandler(async (req, res) => {
         email,
         password,
         username
-    })
+    });
 
-    const createdUser = await User.findById(user._id).select(
-        "-password -refreshToken"
-    )
+    const createdUser = await User.findById(user._id).select("-password -refreshToken");
 
     if (!createdUser) {
-        throw new ApiError(500, "Something went wrong while registering the user")
+        throw new ApiError(500, "Something went wrong while registering the user");
     }
 
     return res.status(201).json(
-        new ApiResponse(200, createdUser, "User registered Successfully")
-    )
+        new ApiResponse(200, { user: createdUser, employeeId: employeeVerified.employeeId }, "User registered successfully")
+    );
+});
 
-})
 
 const loginUser = asyncHandler(async (req, res) => {
 
@@ -259,42 +314,42 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, user, "Account details updated successfully"))
 });
 
-const updateUserAvatar = asyncHandler(async (req, res) => {
-    const avatarLocalPath = req.file?.path
+// const updateUserAvatar = asyncHandler(async (req, res) => {
+//     const avatarLocalPath = req.file?.path
 
-    if (!avatarLocalPath) {
-        throw new ApiError(400, "Avatar file is missing")
-    }
+//     if (!avatarLocalPath) {
+//         throw new ApiError(400, "Avatar file is missing")
+//     }
 
-    // Delete the old image from Cloudinary
-    if (req.user?.avatar) {
-        await deleteFromCloudinary(req.user?.avatar)
-    }
+//     // Delete the old image from Cloudinary
+//     if (req.user?.avatar) {
+//         await deleteFromCloudinary(req.user?.avatar)
+//     }
 
 
-    const avatar = await uploadOnCloudinary(avatarLocalPath)
+//     const avatar = await uploadOnCloudinary(avatarLocalPath)
 
-    if (!avatar.url) {
-        throw new ApiError(400, "Error while uploading on avatar")
+//     if (!avatar.url) {
+//         throw new ApiError(400, "Error while uploading on avatar")
 
-    }
+//     }
 
-    const user = await User.findByIdAndUpdate(
-        req.user?._id,
-        {
-            $set: {
-                avatar: avatar.url
-            }
-        },
-        { new: true }
-    ).select("-password")
+//     const user = await User.findByIdAndUpdate(
+//         req.user?._id,
+//         {
+//             $set: {
+//                 avatar: avatar.url
+//             }
+//         },
+//         { new: true }
+//     ).select("-password")
 
-    return res
-        .status(200)
-        .json(
-            new ApiResponse(200, user, "Avatar image updated successfully")
-        )
-})
+//     return res
+//         .status(200)
+//         .json(
+//             new ApiResponse(200, user, "Avatar image updated successfully")
+//         )
+// })
 
 
 const getUserProfile = asyncHandler(async (req, res) => {
@@ -325,6 +380,6 @@ export {
     changeCurrentPassword,
     getCurrentUser,
     updateAccountDetails,
-    updateUserAvatar,
+    // updateUserAvatar,
     getUserProfile,
 }
