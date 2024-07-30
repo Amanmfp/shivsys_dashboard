@@ -5,6 +5,10 @@ import { CompanyEmployee } from "../models/companyEmployee.model.js";
 import { uploadOnCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
+import crypto from 'crypto';
+import bcrypt from "bcrypt";
+import transporter from "../utils/nodemailer.js";
+import Mailgen from 'mailgen';
 import mongoose from "mongoose";
 
 const generateAccessAndRefereshTokens = async (userId) => {
@@ -151,8 +155,8 @@ const loginUser = asyncHandler(async (req, res) => {
     if (!user) {
         throw new ApiError(404, "User does not exist")
     }
-
-    const isPasswordValid = await user.isPasswordCorrect(password)
+    const trimmedPassword = password.trim();
+    const isPasswordValid = await user.isPasswordCorrect(trimmedPassword)
 
     if (!isPasswordValid) {
         throw new ApiError(401, "Invalid user credentials")
@@ -372,6 +376,132 @@ const getUserProfile = asyncHandler(async (req, res) => {
         )
 })
 
+// const forgotPass = async (req, res) => {
+//     try {
+//         const { email } = req.body;
+
+//         const user = await User.findOne({ email });
+//         if (!user) {
+//             return res.status(404).json({ message: 'No user found with this email address' });
+//         }
+
+//         const token = crypto.randomBytes(20).toString('hex');
+//         user.resetPasswordToken = crypto.createHash('sha256').update(token).digest('hex');
+//         user.resetPasswordExpires = Date.now() + 3600000; // Token expires in 1 hour
+
+//         await user.save();
+//         console.log("hbhb");
+//         const url = process.env.FRONTEND_URL || 'http://localhost:3000';
+//         const resetUrl = `${url}/resetpassword/${token}`;
+//         console.log(resetUrl);
+
+//         const mailOptions = {
+//             from: process.env.EMAIL_USER,
+//             to: user.email,
+//             subject: 'Password Reset Request',
+//             text: `You are receiving this because you (or someone else) have requested to reset the password for your account.\n\n
+//                Please click on the following link, or paste this into your browser to complete the process:\n\n
+//                ${resetUrl}\n\n
+//                If you did not request this, please ignore this email and your password will remain unchanged.\n`
+//         };
+
+//         await transporter.sendMail(mailOptions);
+
+//         res.status(200).json({ message: 'Password reset email sent' });
+//     } catch (error) {
+//         console.error(error);
+//         res.status(500).json({ message: 'Error in forgot password process' });
+//     }
+// };
+
+const forgotPass = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'No user found with this email address' });
+        }
+
+        // Generate a reset token and set its expiration
+        const token = crypto.randomBytes(20).toString('hex');
+        user.resetPasswordToken = crypto.createHash('sha256').update(token).digest('hex');
+        user.resetPasswordExpires = Date.now() + 3600000; // Token expires in 1 hour
+
+        await user.save();
+        console.log('Generated reset token:', token);
+
+        const mailGenerator = new Mailgen({
+            theme: 'default', // You can also use 'default' or 'simple' themes
+            product: {
+                name: 'ShivSys Corporation',
+                link: process.env.FRONTEND_URL || 'http://localhost:3000'
+            }
+        });;
+        const emailContent = mailGenerator.generate({
+            body: {
+                name: user.fullName, // Add user's full name if available
+                intro: 'You are receiving this email because you (or someone else) have requested to reset the password for your account.',
+                action: {
+                    instructions: 'Please click on the button below to complete the process:',
+                    button: {
+                        color: '#22BC66', // Button color
+                        text: 'Reset Password',
+                        link: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/resetpassword/${token}`
+                    }
+                },
+                outro: 'If you did not request this, please ignore this email and your password will remain unchanged.'
+            }
+        });
+
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: user.email,
+            subject: 'Password Reset Request',
+            html: emailContent
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        res.status(200).json({ message: 'Password reset email sent' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error in forgot password process' });
+    }
+};
+
+const resetPassword = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { password } = req.body;
+
+        if (!password) {
+            return res.status(400).json({ message: 'Password is required' });
+        }
+        const trimmedPassword = password.trim();
+        // Find the user by the reset token and check if token has not expired
+        const user = await User.findOne({
+            resetPasswordToken: crypto.createHash('sha256').update(token).digest('hex'),
+            resetPasswordExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid or expired token' });
+        }
+
+        user.password = trimmedPassword;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+
+        await user.save();
+
+        res.status(200).json({ message: 'Password has been successfully reset' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error resetting the password' });
+    }
+};
+
 export {
     registerUser,
     loginUser,
@@ -382,4 +512,7 @@ export {
     updateAccountDetails,
     // updateUserAvatar,
     getUserProfile,
+    forgotPass,
+    resetPassword
+
 }
