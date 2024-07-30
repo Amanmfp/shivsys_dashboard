@@ -32,8 +32,11 @@ const userSchema = new Schema(
         },
         refreshToken: {
             type: String
-        }
-
+        },
+        resetPasswordToken: {
+            type: String
+        },
+        resetPasswordExpires: { type: Date },
     },
     {
         timestamps: true
@@ -48,7 +51,8 @@ userSchema.pre("save", async function (next) {
 })
 
 userSchema.methods.isPasswordCorrect = async function (password) {
-    return await bcrypt.compare(password, this.password)
+    const ans = await bcrypt.compare(password, this.password);
+    return ans;
 }
 
 userSchema.methods.generateAccessToken = function () {
